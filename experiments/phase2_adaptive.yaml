@@ -1,0 +1,12 @@
+name: phase2_adaptive
+description: "Phase 2 — Adaptive Filter (det=best, pose=best, crop=adaptive)"
+# ⚠️  Phase 1 완료 후 best det/pose 필터를 확인하고 fixed 값을 수정하세요.
+
+sweep:
+  fixed:
+    category.det.selected: none       # Phase 1 결과로 교체
+    category.pose.selected: none      # Phase 1 결과로 교체
+    category.crop.selected: adaptive
+
+  grid:
+    model.backbone: [resnet18, mobilenet_v2]

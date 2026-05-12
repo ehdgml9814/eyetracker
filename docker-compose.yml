@@ -1,0 +1,39 @@
+# Usage:
+#   dev:   docker-compose run dev bash
+#   train: docker-compose run train bash
+
+services:
+  dev:
+    build:
+      context: .
+      target: dev
+    shm_size: 2gb
+    stdin_open: true
+    tty: true
+    command: bash
+    environment:
+      - PYTHONPATH=/workspace
+    volumes:
+      - .:/workspace
+      - ./kaggle.json:/root/.kaggle/kaggle.json:ro
+
+  train:
+    build:
+      context: .
+      target: train
+    shm_size: 8gb
+    stdin_open: true
+    tty: true
+    command: bash
+    environment:
+      - PYTHONPATH=/workspace
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - .:/workspace
+      - ./kaggle.json:/root/.kaggle/kaggle.json:ro

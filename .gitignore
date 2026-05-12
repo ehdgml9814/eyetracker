@@ -1,0 +1,36 @@
+# Kaggle API 인증 (절대 커밋 금지)
+kaggle.json
+
+# 환경변수
+.env
+.env.*
+
+# 데이터셋·모델 파일 (대용량)
+data/
+runs/
+.ultralytics/
+*.pt
+*.pth
+*.onnx
+*.weights
+
+# Python 캐시
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# 가상환경
+.venv/
+venv/
+env/
+
+# IDE·OS 메타데이터
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 임시 파일
+*.log
+*.tmp

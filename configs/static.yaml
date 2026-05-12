@@ -1,0 +1,26 @@
+# static.yaml
+# 실험 결과와 무관한 고정 설정
+# 변경 시 모든 실험에 동일하게 영향
+
+dataset:
+  name: MPIIGaze
+  raw_dir: /workspace/data/raw
+  processed_dir: /workspace/data/processed
+  split_mode: random        # random | lopo
+  test_person: p14          # lopo 모드에서만 사용
+  train_split: 0.8          # train:val:test = 0.8:0.1:0.1
+  eye_size: 64
+
+preprocess:
+  brightness_min: 0         # MPIIGaze Original 이미지는 평균 밝기 ~1.8 (대부분 검은 배경) → 0으로 비활성화
+  brightness_max: 255
+  blur_threshold: 50        # Laplacian variance — 이하면 블러로 스킵
+  face_area_min_ratio: 0.05 # 얼굴 bbox가 이미지 면적의 5% 미만이면 스킵
+  gaze_angle_max_deg: 40    # 시선 각도 절댓값이 40° 초과면 스킵
+
+paths:
+  runs_dir: /workspace/runs
+
+infrastructure:
+  num_workers: 0
+  pin_memory: true

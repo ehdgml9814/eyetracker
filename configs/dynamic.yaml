@@ -1,0 +1,28 @@
+# dynamic.yaml
+# 모델 구조 및 학습 하이퍼파라미터 (실험 변수)
+# 필터 설정은 filters.yaml 참조
+#
+# CLI override 예시:
+#   --set model.backbone=mobilenet_v2
+#   --set train.lr=5e-5
+
+model:
+  backbone: resnet18         # resnet18 | mobilenet_v2
+  pretrained: true
+  freeze_backbone: false     # true: 백본 가중치 고정, regressor만 학습
+  dropout: 0.3
+
+  # Regressor 구조 (동적 구성)
+  regressor_hidden: 256      # FC 히든 레이어 크기
+  regressor_layers: 1        # FC 히든 레이어 수 (hidden × layers 반복)
+
+  # Phase 2 전용
+  filter_param_net_hidden: 32  # FilterParamNet 히든 크기
+
+train:
+  batch_size: 512
+  epochs: 50
+  lr: 1.0e-4
+  weight_decay: 1.0e-4
+  lr_scheduler: cosine       # cosine | step | plateau
+  lr_warmup_epochs: 0        # 0이면 warmup 없음

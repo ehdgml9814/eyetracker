@@ -1,0 +1,11 @@
+name: phase1_step1_det
+description: "Phase 1 Step 1 — det 필터 탐색 (pose=none, crop=none 고정)"
+
+sweep:
+  fixed:
+    category.pose.selected: none
+    category.crop.selected: none
+
+  grid:
+    category.det.selected: [none, clahe, gamma, bilateral]
+    model.backbone: [resnet18, mobilenet_v2]

@@ -1,0 +1,12 @@
+name: phase1_step2_pose
+description: "Phase 1 Step 2 — pose 필터 탐색 (det=best, crop=none 고정)"
+# ⚠️  Step 1 완료 후 best det 필터를 확인하고 fixed.category.det.selected를 수정하세요.
+
+sweep:
+  fixed:
+    category.det.selected: none       # Step 1 결과로 교체
+    category.crop.selected: none
+
+  grid:
+    category.pose.selected: [none, clahe, gamma, bilateral]
+    model.backbone: [resnet18, mobilenet_v2]

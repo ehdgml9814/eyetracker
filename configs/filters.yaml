@@ -1,0 +1,75 @@
+# filters.yaml
+# filters : 필터 구현 파라미터 정의 (한 번만 작성)
+# category: 포인트별 적용 필터 선택
+#
+# det  : 전체 프레임 → MediaPipe FaceLandmarker (눈 bbox)
+# pose : 전체 프레임 → MediaPipe FaceLandmarker + PnP (헤드포즈)
+# crop : 눈 크롭(64×64) → GazeNet
+#
+# CLI override 예시:
+#   --set category.det.selected=clahe
+#   --set category.pose.selected=bilateral
+#   --set category.crop.selected=gabor
+#   --set filters.clahe.params.clahe_clip_limit=3.0
+
+# ── 포인트별 적용 필터 선택 ───────────────────────────────────────────────────
+
+category:
+
+  det:
+    selected: none          # none | clahe | gamma | bilateral
+    params: {}              # 전체 프레임용 파라미터 오버라이드
+                            # 예) bilateral_d: 9
+                            # CLI: --set category.det.params.bilateral_d=9
+
+  pose:
+    selected: none          # none | clahe | gamma | bilateral
+    params: {}              # det와 독립적으로 제어 가능
+                            # 예) bilateral_d: 7
+
+  crop:
+    selected: none          # none | high_pass | gabor | both | adaptive
+    params: {}              # 64×64 눈 크롭용 파라미터 오버라이드
+                            # 예) gabor_ksize: 15  (전체 프레임보다 작게)
+                            # CLI: --set category.crop.params.gabor_ksize=15
+
+# ── 필터 파라미터 정의 ────────────────────────────────────────────────────────
+
+filters:
+
+  none: {}
+
+  # det / pose 용
+  clahe:
+    params:
+      clahe_clip_limit: 2.0
+      clahe_tile_grid: 8
+
+  gamma:
+    params:
+      gamma_value: 1.5
+
+  bilateral:
+    params:
+      bilateral_d: 9
+      bilateral_sigma_color: 75
+      bilateral_sigma_space: 75
+
+  # crop 용
+  high_pass:
+    params:
+      high_pass_ksize: 0    # 0 = sigma 기반 자동 계산 (홀수 강제)
+      high_pass_sigma: 2.0
+
+  gabor:
+    params:
+      gabor_ksize: 11       # 홀수 (64×64 크롭 기준 적정 크기)
+      gabor_sigma: 4.0
+      gabor_freq: 0.3       # lambd = 1 / freq
+      gabor_theta: 0.0      # 라디안
+      gabor_gamma: 0.5      # 장단축 비율
+      gabor_psi: 0.0        # 위상 오프셋 라디안
+
+  both: {}                  # high_pass → gabor 순차 적용 (각 params 참조)
+
+  adaptive: {}              # Phase 2 전용 — FilterParamNet 출력값 사용

@@ -1,0 +1,12 @@
+name: phase1_step3_crop
+description: "Phase 1 Step 3 — crop 필터 탐색 (det=best, pose=best 고정)"
+# ⚠️  Step 1, 2 완료 후 best det/pose 필터를 확인하고 fixed 값을 수정하세요.
+
+sweep:
+  fixed:
+    category.det.selected: none       # Step 1 결과로 교체
+    category.pose.selected: none      # Step 2 결과로 교체
+
+  grid:
+    category.crop.selected: [none, high_pass, gabor, both]
+    model.backbone: [resnet18, mobilenet_v2]
