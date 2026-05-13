@@ -281,7 +281,8 @@ dataset.py — __getitem__ 처리 순서:
 GazeEstimator
     │
     ▼
-MSELoss(pred, gaze_label)
+CosineSimilarityLoss(pred, gaze_label)
+  L = 1 - cosine_similarity(pred, gt)
     │
     ▼
 Angular Error (°) 모니터링
@@ -486,7 +487,7 @@ eye_crop → AdaptiveFilter ────────┘ → 필터 적용된 크
 
 ### 손실 함수 및 평가 지표
 
-**학습**: MSE Loss — `L = mean((pred_pitch - gt_pitch)² + (pred_yaw - gt_yaw)²)`
+**학습**: Cosine Similarity Loss — `L = 1 - cosine_similarity(pred, gt)`
 
 **평가**: Angular Error (°)
 
