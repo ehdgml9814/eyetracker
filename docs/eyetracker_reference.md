@@ -670,6 +670,7 @@ pitchyaw = gaze_vec_to_pitchyaw(gvec)     # 화살표 표시용
 | **regressor_hidden** | Baseline Regressor 히든 크기 — S=512/M=1024/L=2048 |
 | **HorizontalFlip** | 수동 증강 — 좌우 이미지 swap + 픽셀 미러 + gaze.x 부호 반전 |
 | **3D 단위벡터** | 모델 출력 — (x,y,z) MPIIGaze 좌표계 (x=오른쪽, y=아래, z=카메라 반대) |
+| **Epoch** | 전체 학습 데이터셋을 한 번 완전히 순회하는 단위 — 1 epoch = train_loader 전체 배치 순회 1회 |
 | **num_workers=0** | HDF5 파일을 멀티프로세스로 열면 deadlock → 워커 0개 고정 |
 | **total_params** | eval.py가 측정하는 모델 전체 파라미터 수 |
 | **kernel_params** | eval.py가 측정하는 KernelNet 파라미터 수 (baseline=0) |
