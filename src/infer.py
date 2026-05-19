@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.models.detector import EyeLandmarker, solve_head_pose
 # from src.utils.filter_pipeline import apply_det, apply_pose, apply_crop
+from src.utils.calibrate import load_calib
 from src.utils.metrics import gaze_vec_to_pitchyaw
 from src.utils.visualize import draw_gaze_arrow, draw_bbox, draw_text
 
@@ -68,7 +69,7 @@ def _prepare_eye(crop: np.ndarray, eye_size: int) -> np.ndarray:
     return _normalize(crop.transpose(2, 0, 1))
 
 
-def infer(exp_dir: Path, source: int | str) -> None:
+def infer(exp_dir: Path, source: int | str, calib_path: str | None = None) -> None:
     with open(exp_dir / "config.yaml") as f:
         cfg = yaml.safe_load(f)
 
@@ -79,6 +80,27 @@ def infer(exp_dir: Path, source: int | str) -> None:
     model.load_state_dict(torch.load(str(exp_dir / "best.pt"), map_location=device))
     model = model.to(device)
     model.eval()
+
+    # ── 카메라 캘리브레이션 로드 ───────────────────────────────────────────────
+    # 우선순위: --calib 인수 > data/camera_calib.yaml > 근사값 fallback
+    calib_candidates = [
+        calib_path,
+        "data/camera_calib.yaml",
+    ]
+    cam_matrix: np.ndarray | None = None
+    dist_coeff: np.ndarray | None = None
+    for candidate in calib_candidates:
+        if candidate is None:
+            continue
+        result = load_calib(candidate)
+        if result is not None:
+            cam_matrix, dist_coeff = result
+            print(f"[infer] 카메라 캘리브레이션 로드: {candidate}")
+            print(f"        fx={cam_matrix[0,0]:.1f}  fy={cam_matrix[1,1]:.1f}"
+                  f"  cx={cam_matrix[0,2]:.1f}  cy={cam_matrix[1,2]:.1f}")
+            break
+    if cam_matrix is None:
+        print("[infer] 캘리브레이션 파일 없음 — focal=width 근사값 사용")
 
     model_path = Path(cfg["dataset"]["raw_dir"]).parent / "models" / "face_landmarker.task"
     landmarker = EyeLandmarker(model_path=str(model_path))
@@ -107,7 +129,9 @@ def infer(exp_dir: Path, source: int | str) -> None:
                 overlay = frame.copy()
             else:
                 _, pts_2d = pose_result
-                head_pose = solve_head_pose(pts_2d, frame.shape[:2])
+                head_pose = solve_head_pose(
+                    pts_2d, frame.shape[:2], cam_matrix, dist_coeff
+                )
 
                 def crop_eye(bbox):
                     x1, y1, x2, y2 = bbox
@@ -158,9 +182,14 @@ def main() -> None:
     parser.add_argument("--exp-dir", required=True)
     parser.add_argument("--camera",  type=int, default=0)
     parser.add_argument("--video",   default=None)
+    parser.add_argument(
+        "--calib",
+        default=None,
+        help="카메라 캘리브레이션 YAML 경로 (없으면 data/camera_calib.yaml 자동 탐색)",
+    )
     args = parser.parse_args()
 
-    infer(Path(args.exp_dir), args.video if args.video else args.camera)
+    infer(Path(args.exp_dir), args.video if args.video else args.camera, args.calib)
 
 
 if __name__ == "__main__":

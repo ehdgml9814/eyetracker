@@ -196,27 +196,37 @@ class EyeLandmarker:
 def solve_head_pose(
     pts_2d: np.ndarray,
     frame_shape: tuple[int, int],
+    camera_matrix: Optional[np.ndarray] = None,
+    dist_coeffs: Optional[np.ndarray] = None,
 ) -> np.ndarray:
     """
     PnP 솔버로 헤드포즈 추정.
 
     Args:
-        pts_2d      : (6, 2) float32 2D 랜드마크 (detect_with_landmarks 반환값)
-        frame_shape : (height, width)
+        pts_2d        : (6, 2) float32 2D 랜드마크 (detect_with_landmarks 반환값)
+        frame_shape   : (height, width)
+        camera_matrix : (3, 3) float64 내부 파라미터 행렬.
+                        None 이면 focal=width, cx/cy=중심 근사값 사용.
+        dist_coeffs   : (k, 1) float64 왜곡 계수.
+                        None 이면 0 (무시곡) 가정.
 
     Returns:
         (3,) float32 — [pitch, yaw, roll] 라디안
     """
     h, w = frame_shape
-    focal = w
-    cx, cy = w / 2.0, h / 2.0
-    camera_matrix = np.array(
-        [[focal, 0, cx],
-         [0, focal, cy],
-         [0, 0,  1  ]],
-        dtype=np.float64,
-    )
-    dist_coeffs = np.zeros((4, 1), dtype=np.float64)
+
+    if camera_matrix is None:
+        focal = float(w)
+        cx, cy = w / 2.0, h / 2.0
+        camera_matrix = np.array(
+            [[focal, 0.0,  cx],
+             [0.0,  focal, cy],
+             [0.0,  0.0,   1.0]],
+            dtype=np.float64,
+        )
+
+    if dist_coeffs is None:
+        dist_coeffs = np.zeros((4, 1), dtype=np.float64)
 
     success, rvec, tvec = cv2.solvePnP(
         _3D_MODEL_POINTS,
