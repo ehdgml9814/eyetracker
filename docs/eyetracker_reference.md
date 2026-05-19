@@ -230,6 +230,49 @@ out    = out.reshape(B, C, H, W)              # (B, 3, H, W)
 
 ## 📊 실험 설계
 
+### 모델 구조 비교
+
+```mermaid
+flowchart TB
+    subgraph P["🔬 Proposed  ·  ΔΘ = 357,710 + 204·h_k"]
+        direction TB
+        PI["입력  left · right (B,3,64,64) · head_pose (B,3)"]
+        PKN["KernelNet\nConv×3 + BN + GAP → FC×2\nS: 119,883  ·  M: 198,219  ·  L: 511,563"]
+        PDF["DynamicFilter\ngrouped conv2d  (학습 파라미터 없음)"]
+        PBB["SiameseBackbone  ResNet18 ImageNet\n≈ 11,200,000  공유 · 고정"]
+        PRG["Regressor  hidden=256\n1027 → 256 → 3  ·  263,939 params"]
+        PO["F.normalize → gaze (B,3)"]
+        PI --> PKN --> PDF --> PBB --> PRG --> PO
+        PI -.->|"원본 이미지"| PDF
+    end
+
+    subgraph B["📊 Baseline  ·  ΔΘ = 1,031·h_r + 3"]
+        direction TB
+        BI["입력  left · right (B,3,64,64) · head_pose (B,3)"]
+        BBB["SiameseBackbone  ResNet18 ImageNet\n≈ 11,200,000  공유 · 고정"]
+        BRG["LargerRegressor  1027 → h_r → 3\nS: 527,875  ·  M: 1,055,747  ·  L: 2,111,491"]
+        BO["F.normalize → gaze (B,3)"]
+        BI --> BBB --> BRG --> BO
+    end
+```
+
+### 학습 전략 비교
+
+```mermaid
+flowchart LR
+    subgraph E2E["E2E  (50 epoch 전체)"]
+        direction TB
+        EA["모든 파라미터 동시 학습\nKernelNet + Backbone + Regressor"]
+    end
+
+    subgraph SEQ["Sequential  (20 + 30 epoch)"]
+        direction TB
+        S1["Phase 1  epoch 1~20\n전체 파라미터 학습\nKernelNet warm-up"]
+        S2["Phase 2  epoch 21~50\nKernelNet ❄ freeze\nBackbone + Regressor만 fine-tune"]
+        S1 -->|"kernel_net.requires_grad=False\noptimizer rebuild"| S2
+    end
+```
+
 ### 총 9개 실험
 
 | 실험군 | 모델 | 학습 방식 | 크기 파라미터 | 실험 수 |
@@ -658,16 +701,91 @@ err = np.mean(np.degrees(np.arccos(dot)))
 <details>
 <summary><strong>파라미터 예산 설계</strong> — Proposed vs Baseline 공정 비교</summary>
 
-SiameseBackbone(ResNet18, 11.2M)은 양쪽 고정. 추가 파라미터만 비교.
+### 전체 파라미터 분해
 
 ```
-Proposed:  KernelNet(extra_params) + Regressor(256 hidden, 소형)
-Baseline:  Regressor(512~2048 hidden, extra_params에 해당하는 크기)
+Θ_P(h_k) = Θ_backbone  +  Θ_KN(h_k)  +  Θ_Reg(256)
+Θ_B(h_r) = Θ_backbone  +  Θ_Reg(h_r)
+
+Θ_backbone = 11.2M  (ResNet18 SiameseBackbone, 양쪽 동일 · 고정)
 ```
 
-**핵심 질문**: 동일 파라미터 예산을 필터링(KernelNet)에 쓰는 게 유리한가, 추정기(Regressor)에 쓰는 게 유리한가?
+### 구성요소별 파라미터 공식 (k=5)
 
-`eval.py`가 실제 파라미터 수를 측정해 `result.yaml`에 기록 → `compare.py`에서 공정 비교.
+```
+Θ_KN(h_k) = 93,771 + 204·h_k
+  ├─ encoder Conv×3 + BN×3 (고정): 93,696
+  ├─ FC1  Linear(128 → h_k):       129·h_k   params
+  └─ FC2  Linear(h_k → 75):         75·h_k + 75  params
+
+Θ_Reg(h)  = 1,031·h + 3
+  ├─ Linear(1027 → h):  1,028·h   params
+  └─ Linear(h → 3):        3·h + 3  params
+```
+
+### 설정 → 코드 경로
+
+**`configs/dynamic.yaml`** — 설정값 원천:
+```yaml
+model:
+  kernel_hidden: 512      # h_k: S=128 / M=512 / L=2048
+  kernel_size: 5          # k=5 고정
+  regressor_hidden: 256   # Proposed 고정 / Baseline은 sweep으로 512~2048
+```
+
+**`src/models/kernel_net.py`** — h_k → FC 레이어 크기:
+```python
+self.fc = nn.Sequential(
+    nn.Linear(128, kernel_hidden),                      # 129·h_k  params
+    nn.ReLU(inplace=True),
+    nn.Linear(kernel_hidden, 3 * kernel_size * kernel_size),  # 75·h_k+75  params
+)
+```
+
+**`src/models/proposed_model.py`** — cfg에서 두 값 모두 읽음:
+```python
+kernel_hidden = int(m.get("kernel_hidden", 512))    # → KernelNet 크기
+reg_hidden    = int(m.get("regressor_hidden", 256)) # → Regressor(소형) 크기
+self.kernel_net = KernelNet(kernel_hidden, kernel_size)
+self.regressor  = Regressor(in_dim, hidden_dim=reg_hidden, ...)
+```
+
+**`src/models/baseline_model.py`** — regressor_hidden만 읽음:
+```python
+reg_hidden = int(m.get("regressor_hidden", 1024))   # sweep: 512/1024/2048
+self.regressor = Regressor(in_dim, hidden_dim=reg_hidden, ...)
+```
+
+**`src/eval.py`** — 실제 파라미터 수 측정:
+```python
+total_params  = sum(p.numel() for p in model.parameters())
+kernel_params = (
+    sum(p.numel() for p in model.kernel_net.parameters())
+    if hasattr(model, "kernel_net") else 0
+)
+```
+
+### 추가 파라미터 (backbone 제외) 및 근사 동등
+
+```
+ΔΘ_P(h_k) = Θ_KN(h_k) + Θ_Reg(256)  =  357,710 + 204·h_k
+ΔΘ_B(h_r) = Θ_Reg(h_r)               =    1,031·h_r + 3
+
+설계 의도: ΔΘ_P ≈ ΔΘ_B  (같은 규모의 추가 파라미터를 서로 다른 곳에 투자)
+```
+
+### S/M/L 크기별 실제 파라미터 수
+
+| 크기 | h_k / h_r | ΔΘ_P (Proposed 추가) | ΔΘ_B (Baseline 추가) | ΔΘ_B / ΔΘ_P |
+|:----:|:---------:|---------------------:|---------------------:|:-----------:|
+| S | 128 / 512    |  383,822 |    527,875 | 1.38× |
+| M | 512 / 1024   |  462,158 |  1,055,747 | 2.28× |
+| L | 2048 / 2048  |  775,502 |  2,111,491 | 2.72× |
+
+> Baseline이 항상 더 많은 파라미터를 가짐. "엄밀한 동등"이 아닌 "같은 규모의 추가 투자"로 설계.
+> `eval.py`가 실제 값 측정 → `result.yaml`에 기록 → `compare.py`에서 투명하게 비교.
+
+**핵심 질문**: 동일 규모의 추가 파라미터를 필터링(KernelNet)에 쓰는 게 유리한가, 추정기(LargerRegressor)에 쓰는 게 유리한가?
 
 </details>
 
