@@ -712,13 +712,20 @@ $$\Theta_{\text{backbone}} = 11.2\text{M} \quad (\text{ResNet18 SiameseBackbone,
 
 ### 구성요소별 파라미터 공식 (k=5)
 
-$$\Theta_{KN}(h_k) = \underbrace{93{,}696}_{\text{encoder 고정}} + \underbrace{129 \cdot h_k}_{\text{FC1}} + \underbrace{75 \cdot h_k + 75}_{\text{FC2}} = 93{,}771 + 204 \cdot h_k$$
+$$\Theta_{KN}(h_k) = 93{,}771 + 204 \cdot h_k$$
 
-- encoder: Conv×3 + BN×3 고정 (93,696)
-- FC1 — Linear$(128 \to h_k)$: $129 \cdot h_k$ params
-- FC2 — Linear$(h_k \to 75)$: $75 \cdot h_k + 75$ params
+| 구성 요소 | 공식 |
+|----------|------|
+| encoder — Conv×3 + BN×3 (고정) | $93{,}696$ |
+| FC1 — Linear$(128 \to h_k)$ | $129 \cdot h_k$ |
+| FC2 — Linear$(h_k \to 75)$ | $75 \cdot h_k + 75$ |
 
-$$\Theta_{\text{Reg}}(h) = \underbrace{1{,}028 \cdot h}_{\text{Linear}(1027 \to h)} + \underbrace{3h + 3}_{\text{Linear}(h \to 3)} = 1{,}031 \cdot h + 3$$
+$$\Theta_{\text{Reg}}(h) = 1{,}031 \cdot h + 3$$
+
+| 구성 요소 | 공식 |
+|----------|------|
+| Linear$(1027 \to h)$ | $1{,}028 \cdot h$ |
+| Linear$(h \to 3)$ | $3h + 3$ |
 
 ### 설정 → 코드 경로
 
