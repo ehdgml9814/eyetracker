@@ -627,7 +627,6 @@ pitchyaw = gaze_vec_to_pitchyaw(gvec)     # 화살표 표시용
 | **regressor_hidden** | Baseline Regressor 히든 크기 — S=512/M=1024/L=2048 |
 | **HorizontalFlip** | 수동 증강 — 좌우 이미지 swap + 픽셀 미러 + gaze.x 부호 반전 |
 | **3D 단위벡터** | 모델 출력 — (x,y,z) MPIIGaze 좌표계 (x=오른쪽, y=아래, z=카메라 반대) |
-| **m_RTGeoDirty** | (AlphaEngine 참조 용어) 여기선 해당 없음 |
 | **num_workers=0** | HDF5 파일을 멀티프로세스로 열면 deadlock → 워커 0개 고정 |
 | **total_params** | eval.py가 측정하는 모델 전체 파라미터 수 |
 | **kernel_params** | eval.py가 측정하는 KernelNet 파라미터 수 (baseline=0) |
@@ -682,18 +681,5 @@ MPIIGaze는 좌우안 이미지가 **독립적으로 존재** (단일 이미지 
 3. `gaze[0] *= -1.0` — 시선 벡터 x성분 부호 반전 (MPIIGaze 좌표계: x=오른쪽)
 
 albumentations의 HorizontalFlip은 단일 이미지만 처리하므로 이 로직을 대체할 수 없음.
-
-</details>
-
-<details>
-<summary><strong>SSBO/std430</strong> — (참고: AlphaEngine 연관 개념)</summary>
-
-eyetracker는 GPU SSBO를 직접 사용하지 않음.
-GPU 연산은 PyTorch DataParallel/CUDA를 통해 추상화.
-
-모델 입력 텐서 dtype:
-- 이미지: `float32` (정규화 완료)
-- gaze/head_pose: `float32`
-- 모델 출력: `float32` (B,3) 정규화 단위벡터
 
 </details>
