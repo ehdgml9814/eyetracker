@@ -24,7 +24,7 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.models.detector import EyeLandmarker, solve_head_pose
-from src.utils.filter_pipeline import apply_det, apply_pose, apply_crop
+# from src.utils.filter_pipeline import apply_det, apply_pose, apply_crop
 from src.utils.metrics import gaze_vec_to_pitchyaw
 from src.utils.visualize import draw_gaze_arrow, draw_bbox, draw_text
 
@@ -41,20 +41,30 @@ def _normalize(img_chw: np.ndarray) -> np.ndarray:
     return x
 
 
+# def _build_model(cfg: dict) -> torch.nn.Module:
+#     crop_selected = cfg.get("category", {}).get("crop", {}).get("selected", "none")
+#     if crop_selected == "adaptive":
+#         from src.models.adaptive_filter import GazeEstimatorV2
+#         return GazeEstimatorV2(cfg)
+#     else:
+#         from src.models.gaze_model import GazeEstimator
+#         return GazeEstimator(cfg)
 def _build_model(cfg: dict) -> torch.nn.Module:
-    crop_selected = cfg.get("category", {}).get("crop", {}).get("selected", "none")
-    if crop_selected == "adaptive":
-        from src.models.adaptive_filter import GazeEstimatorV2
-        return GazeEstimatorV2(cfg)
+    model_type = cfg.get("model", {}).get("type", "proposed")
+    if model_type == "proposed":
+        from src.models.proposed_model import ProposedModel
+        return ProposedModel(cfg)
+    elif model_type == "baseline":
+        from src.models.baseline_model import BaselineModel
+        return BaselineModel(cfg)
     else:
-        from src.models.gaze_model import GazeEstimator
-        return GazeEstimator(cfg)
+        raise ValueError(f"Unknown model type: {model_type}. Choose from [proposed, baseline]")
 
-
-def _prepare_eye(crop: np.ndarray, eye_size: int, cfg: dict) -> np.ndarray:
+#cfg 제거
+def _prepare_eye(crop: np.ndarray, eye_size: int) -> np.ndarray:
     """원본 크롭 → crop 필터 → 리사이즈 → CHW 정규화 float32."""
     crop = cv2.resize(crop, (eye_size, eye_size))
-    crop = apply_crop(crop, cfg)
+    # crop = apply_crop(crop, cfg)
     return _normalize(crop.transpose(2, 0, 1))
 
 
@@ -84,14 +94,14 @@ def infer(exp_dir: Path, source: int | str) -> None:
         if not ret:
             break
 
-        det_frame  = apply_det(frame, cfg)
-        det_result = landmarker.detect(det_frame)
+        # det_frame  = apply_det(frame, cfg)
+        det_result = landmarker.detect(frame)
 
         if det_result is None:
             overlay = draw_text(frame, "No face detected", color=(0, 0, 255))
         else:
-            pose_frame  = apply_pose(frame, cfg)
-            pose_result = landmarker.detect_with_landmarks(pose_frame)
+            # pose_frame  = apply_pose(frame, cfg)
+            pose_result = landmarker.detect_with_landmarks(frame)
 
             if pose_result is None:
                 overlay = frame.copy()
@@ -109,8 +119,8 @@ def infer(exp_dir: Path, source: int | str) -> None:
                 if l_crop.size == 0 or r_crop.size == 0:
                     overlay = frame.copy()
                 else:
-                    l_t  = torch.from_numpy(_prepare_eye(l_crop, eye_size, cfg)).unsqueeze(0).to(device)
-                    r_t  = torch.from_numpy(_prepare_eye(r_crop, eye_size, cfg)).unsqueeze(0).to(device)
+                    l_t  = torch.from_numpy(_prepare_eye(l_crop, eye_size)).unsqueeze(0).to(device)
+                    r_t  = torch.from_numpy(_prepare_eye(r_crop, eye_size)).unsqueeze(0).to(device)
                     hp_t = torch.from_numpy(head_pose).unsqueeze(0).to(device)
 
                     with torch.no_grad():

@@ -60,7 +60,9 @@ def load_config(
 
     static  = yaml.safe_load((config_dir / "static.yaml").read_text())  or {}
     dynamic = yaml.safe_load((config_dir / "dynamic.yaml").read_text()) or {}
-    filters = yaml.safe_load((config_dir / "filters.yaml").read_text()) or {}
+    # filters = yaml.safe_load((config_dir / "filters.yaml").read_text()) or {}
+    filters_path = config_dir / "filters.yaml"
+    filters = yaml.safe_load(filters_path.read_text()) if filters_path.exists() else {}
 
     cfg = _deep_merge(static, dynamic)
     cfg = _deep_merge(cfg, filters)

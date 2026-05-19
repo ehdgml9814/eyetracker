@@ -64,16 +64,30 @@ def _expand_sweep(sweep: dict) -> list[dict[str, str]]:
     return experiments
 
 
+# def _exp_name(base_name: str, overrides: dict[str, str]) -> str:
+#     """
+#     실험 디렉토리 이름 생성.
+#     예) exp_clahe_none_gabor_resnet18
+#     """
+#     det  = overrides.get("category.det.selected",  "none")
+#     pose = overrides.get("category.pose.selected", "none")
+#     crop = overrides.get("category.crop.selected", "none")
+#     bb   = overrides.get("model.backbone",         "resnet18")
+#     return f"exp_{det}_{pose}_{crop}_{bb}"
 def _exp_name(base_name: str, overrides: dict[str, str]) -> str:
     """
-    실험 디렉토리 이름 생성.
-    예) exp_clahe_none_gabor_resnet18
+    예) exp_proposed_e2e_512
+        exp_baseline_1024
     """
-    det  = overrides.get("category.det.selected",  "none")
-    pose = overrides.get("category.pose.selected", "none")
-    crop = overrides.get("category.crop.selected", "none")
-    bb   = overrides.get("model.backbone",         "resnet18")
-    return f"exp_{det}_{pose}_{crop}_{bb}"
+    model_type = overrides.get("model.type", "proposed")
+    mode       = overrides.get("train.mode", "e2e")
+
+    if model_type == "proposed":
+        size = overrides.get("model.kernel_hidden", "512")
+    else:
+        size = overrides.get("model.regressor_hidden", "1024")
+
+    return f"exp_{model_type}_{mode}_{size}"
 
 
 def _overrides_to_set_args(overrides: dict[str, str]) -> list[str]:

@@ -23,14 +23,24 @@ from src.utils.metrics import angular_error_np
 from src.data.dataset import MPIIGazeDataset
 
 
+# def _build_model(cfg: dict) -> torch.nn.Module:
+#     crop_selected = cfg.get("category", {}).get("crop", {}).get("selected", "none")
+#     if crop_selected == "adaptive":
+#         from src.models.adaptive_filter import GazeEstimatorV2
+#         return GazeEstimatorV2(cfg)
+#     else:
+#         from src.models.gaze_model import GazeEstimator
+#         return GazeEstimator(cfg)
 def _build_model(cfg: dict) -> torch.nn.Module:
-    crop_selected = cfg.get("category", {}).get("crop", {}).get("selected", "none")
-    if crop_selected == "adaptive":
-        from src.models.adaptive_filter import GazeEstimatorV2
-        return GazeEstimatorV2(cfg)
+    model_type = cfg.get("model", {}).get("type", "proposed")
+    if model_type == "proposed":
+        from src.models.proposed_model import ProposedModel
+        return ProposedModel(cfg)
+    elif model_type == "baseline":
+        from src.models.baseline_model import BaselineModel
+        return BaselineModel(cfg)
     else:
-        from src.models.gaze_model import GazeEstimator
-        return GazeEstimator(cfg)
+        raise ValueError(f"Unknown model type: {model_type}. Choose from [proposed, baseline]")
 
 
 def evaluate(exp_dir: Path) -> float:
@@ -56,6 +66,12 @@ def evaluate(exp_dir: Path) -> float:
     )
 
     model = _build_model(cfg)
+    total_params  = sum(p.numel() for p in model.parameters())
+    kernel_params = (
+        sum(p.numel() for p in model.kernel_net.parameters())
+        if hasattr(model, "kernel_net") else 0
+    )
+    print(f"[eval] total_params={total_params:,}  kernel_params={kernel_params:,}")
     model.load_state_dict(torch.load(exp_dir / "best.pt", map_location=device))
     model = model.to(device)
     model.eval()
@@ -83,7 +99,12 @@ def evaluate(exp_dir: Path) -> float:
     if result_path.exists():
         with open(result_path) as f:
             result = yaml.safe_load(f) or {}
-    result.setdefault("best", {})["test_angular_err"] = float(test_err)
+    # result.setdefault("best", {})["test_angular_err"] = float(test_err)
+    # save_yaml(result, result_path)
+    result = yaml.safe_load(open(result_path)) or {}
+    result["experiment"]["total_params"]  = total_params
+    result["experiment"]["kernel_params"] = kernel_params
+    result["best"]["test_angular_err"]    = float(test_err)
     save_yaml(result, result_path)
 
     return test_err

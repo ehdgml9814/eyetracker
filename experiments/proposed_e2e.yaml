@@ -1,0 +1,8 @@
+name: proposed_e2e
+description: "실험군 — End-to-End 학습, KernelNet 크기 S/M/L"
+sweep:
+  fixed:
+    model.type: proposed
+    train.mode: e2e
+  grid:
+    model.kernel_hidden: [128, 512, 2048]

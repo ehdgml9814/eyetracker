@@ -1,0 +1,9 @@
+name: proposed_seq
+description: "실험군 — 순차 학습 (Phase1→Phase2), KernelNet 크기 S/M/L"
+sweep:
+  fixed:
+    model.type: proposed
+    train.mode: sequential
+    train.phase1_ratio: 0.4
+  grid:
+    model.kernel_hidden: [128, 512, 2048]

@@ -28,19 +28,30 @@ def _load_results(runs_dir: Path) -> list[dict]:
         if "test_angular_err" not in best:
             continue  # 아직 eval 미완료
         exp_info = data.get("experiment", {})
+        # results.append({
+        #     "exp_dir":       result_yaml.parent.name,
+        #     "det_filter":    exp_info.get("det_filter",  "?"),
+        #     "pose_filter":   exp_info.get("pose_filter", "?"),
+        #     "crop_filter":   exp_info.get("crop_filter", "?"),
+        #     "backbone":      exp_info.get("backbone",    "?"),
+        #     "val_angular_err":  float(best.get("val_angular_err",  999.0)),
+        #     "test_angular_err": float(best.get("test_angular_err", 999.0)),
+        #     "best_epoch":    int(best.get("epoch", 0)),
+        # })
         results.append({
-            "exp_dir":       result_yaml.parent.name,
-            "det_filter":    exp_info.get("det_filter",  "?"),
-            "pose_filter":   exp_info.get("pose_filter", "?"),
-            "crop_filter":   exp_info.get("crop_filter", "?"),
-            "backbone":      exp_info.get("backbone",    "?"),
+            "exp_dir":          result_yaml.parent.name,
+            "type":             exp_info.get("model_type",       "?"),
+            "mode":             exp_info.get("train_mode",       "?"),
+            "size":             exp_info.get("kernel_hidden", exp_info.get("regressor_hidden", "?")),
+            "total_params":     exp_info.get("total_params",     0),
+            "kernel_params":    exp_info.get("kernel_params",    0),
             "val_angular_err":  float(best.get("val_angular_err",  999.0)),
             "test_angular_err": float(best.get("test_angular_err", 999.0)),
-            "best_epoch":    int(best.get("epoch", 0)),
+            "best_epoch":       int(best.get("epoch", 0)),
         })
     return sorted(results, key=lambda r: r["test_angular_err"])
 
-
+# 이제 사용 안함
 def _phase_of(row: dict) -> str:
     if row["crop_filter"] == "adaptive":
         return "phase2"
@@ -52,64 +63,108 @@ def _print_table(results: list[dict]) -> None:
         print("결과 없음.")
         return
 
+    # header = (
+    #     f"{'순위':>4}  {'det':10} {'pose':10} {'crop':10} {'backbone':14}"
+    #     f"{'val_err°':>9} {'test_err°':>10} {'epoch':>6}  exp_dir"
+    # )
     header = (
-        f"{'순위':>4}  {'det':10} {'pose':10} {'crop':10} {'backbone':14}"
-        f"{'val_err°':>9} {'test_err°':>10} {'epoch':>6}  exp_dir"
+        f"{'순위':>4}  {'type':10} {'mode':12} {'size':6}"
+        f"{'total_params':>13} {'kernel_params':>14}"
+        f"{'val_err°':>9} {'test_err°':>10} {'epoch':>6}"
     )
     print(header)
     print("-" * len(header))
 
+    # for rank, row in enumerate(results, start=1):
+    #     print(
+    #         f"  {rank:2d}  {row['det_filter']:10} {row['pose_filter']:10} "
+    #         f"{row['crop_filter']:10} {row['backbone']:14}"
+    #         f"  {row['val_angular_err']:7.3f}°  {row['test_angular_err']:8.3f}°"
+    #         f"  {row['best_epoch']:5d}  {row['exp_dir']}"
+    #     )
     for rank, row in enumerate(results, start=1):
         print(
-            f"  {rank:2d}  {row['det_filter']:10} {row['pose_filter']:10} "
-            f"{row['crop_filter']:10} {row['backbone']:14}"
+            f"  {rank:2d}  {row['type']:10} {row['mode']:12} {str(row['size']):6}"
+            f"  {row['total_params']:>12,}  {row['kernel_params']:>13,}"
             f"  {row['val_angular_err']:7.3f}°  {row['test_angular_err']:8.3f}°"
-            f"  {row['best_epoch']:5d}  {row['exp_dir']}"
+            f"  {row['best_epoch']:5d}"
         )
 
 
+# def compare(runs_dir: Path) -> None:
+#     results = _load_results(runs_dir)
+#     if not results:
+#         print(f"[compare] {runs_dir} 내 완료된 실험이 없습니다.")
+#         return
+
+#     phase1 = [r for r in results if _phase_of(r) == "phase1"]
+#     phase2 = [r for r in results if _phase_of(r) == "phase2"]
+
+#     print(f"\n{'='*60}")
+#     print(f"  Phase 1 결과 ({len(phase1)}개)")
+#     print(f"{'='*60}")
+#     _print_table(phase1)
+
+#     if phase2:
+#         print(f"\n{'='*60}")
+#         print(f"  Phase 2 결과 ({len(phase2)}개)")
+#         print(f"{'='*60}")
+#         _print_table(phase2)
+
+#     # 요약 저장
+#     summary = {"experiments": results}
+
+#     if phase1:
+#         best_p1 = phase1[0]
+#         summary["phase1_best"] = {
+#             k: best_p1[k]
+#             for k in ("det_filter", "pose_filter", "crop_filter",
+#                       "backbone", "test_angular_err")
+#         }
+
+#     if phase2:
+#         best_p2 = phase2[0]
+#         summary["phase2_best"] = {
+#             k: best_p2[k]
+#             for k in ("det_filter", "pose_filter", "crop_filter",
+#                       "backbone", "test_angular_err")
+#         }
+
+#     if phase1 and phase2:
+#         improvement = phase1[0]["test_angular_err"] - phase2[0]["test_angular_err"]
+#         summary["improvement_deg"] = round(improvement, 4)
+
+#     out_path = runs_dir / "experiments_summary.yaml"
+#     save_yaml(summary, out_path)
+#     print(f"\n[compare] 요약 저장: {out_path}")
 def compare(runs_dir: Path) -> None:
     results = _load_results(runs_dir)
     if not results:
         print(f"[compare] {runs_dir} 내 완료된 실험이 없습니다.")
         return
 
-    phase1 = [r for r in results if _phase_of(r) == "phase1"]
-    phase2 = [r for r in results if _phase_of(r) == "phase2"]
+    proposed = [r for r in results if r["type"] == "proposed"]
+    baseline = [r for r in results if r["type"] == "baseline"]
 
     print(f"\n{'='*60}")
-    print(f"  Phase 1 결과 ({len(phase1)}개)")
+    print(f"  Proposed 결과 ({len(proposed)}개)")
     print(f"{'='*60}")
-    _print_table(phase1)
+    _print_table(proposed)
 
-    if phase2:
+    if baseline:
         print(f"\n{'='*60}")
-        print(f"  Phase 2 결과 ({len(phase2)}개)")
+        print(f"  Baseline 결과 ({len(baseline)}개)")
         print(f"{'='*60}")
-        _print_table(phase2)
+        _print_table(baseline)
 
-    # 요약 저장
     summary = {"experiments": results}
 
-    if phase1:
-        best_p1 = phase1[0]
-        summary["phase1_best"] = {
-            k: best_p1[k]
-            for k in ("det_filter", "pose_filter", "crop_filter",
-                      "backbone", "test_angular_err")
-        }
-
-    if phase2:
-        best_p2 = phase2[0]
-        summary["phase2_best"] = {
-            k: best_p2[k]
-            for k in ("det_filter", "pose_filter", "crop_filter",
-                      "backbone", "test_angular_err")
-        }
-
-    if phase1 and phase2:
-        improvement = phase1[0]["test_angular_err"] - phase2[0]["test_angular_err"]
-        summary["improvement_deg"] = round(improvement, 4)
+    if proposed:
+        summary["proposed_best"] = {k: proposed[0][k] for k in ("type", "mode", "size", "test_angular_err")}
+    if baseline:
+        summary["baseline_best"] = {k: baseline[0][k] for k in ("type", "mode", "size", "test_angular_err")}
+    if proposed and baseline:
+        summary["improvement_deg"] = round(baseline[0]["test_angular_err"] - proposed[0]["test_angular_err"], 4)
 
     out_path = runs_dir / "experiments_summary.yaml"
     save_yaml(summary, out_path)

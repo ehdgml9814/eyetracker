@@ -32,14 +32,24 @@ from src.utils.metrics import angular_error_batch
 from src.data.dataset import MPIIGazeDataset
 
 
+# def _build_model(cfg: dict) -> nn.Module:
+#     crop_selected = cfg.get("category", {}).get("crop", {}).get("selected", "none")
+#     if crop_selected == "adaptive":
+#         from src.models.adaptive_filter import GazeEstimatorV2
+#         return GazeEstimatorV2(cfg)
+#     else:
+#         from src.models.gaze_model import GazeEstimator
+#         return GazeEstimator(cfg)
 def _build_model(cfg: dict) -> nn.Module:
-    crop_selected = cfg.get("category", {}).get("crop", {}).get("selected", "none")
-    if crop_selected == "adaptive":
-        from src.models.adaptive_filter import GazeEstimatorV2
-        return GazeEstimatorV2(cfg)
+    model_type = cfg.get("model", {}).get("type", "proposed")
+    if model_type == "proposed":
+        from src.models.proposed_model import ProposedModel
+        return ProposedModel(cfg)
+    elif model_type == "baseline":
+        from src.models.baseline_model import BaselineModel
+        return BaselineModel(cfg)
     else:
-        from src.models.gaze_model import GazeEstimator
-        return GazeEstimator(cfg)
+        raise ValueError(f"Unknown model type: {model_type}. Choose from [proposed, baseline]")
 
 
 def cosine_loss(pred: torch.Tensor, gt: torch.Tensor) -> torch.Tensor:
@@ -121,11 +131,28 @@ def train(cfg: dict, exp_dir: Path) -> None:
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=wd)
     scheduler, sched_type = _build_scheduler(optimizer, cfg)
 
+    train_mode   = cfg.get("train", {}).get("mode", "e2e")
+    phase1_ratio = float(cfg.get("train", {}).get("phase1_ratio", 0.4))
+    phase1_end   = int(epochs * phase1_ratio)
+
     best_val_err = float("inf")
     best_epoch   = 0
     log_path     = exp_dir / "train_log.yaml"
 
     for epoch in range(1, epochs + 1):
+        # ── Sequential Phase2 진입 처리 ──────────────────────────────────────
+        if train_mode == "sequential" and epoch == phase1_end + 1:
+            if hasattr(model, "kernel_net"):
+                for p in model.kernel_net.parameters():
+                    p.requires_grad = False
+                # optimizer 재빌드 (frozen params 제외)
+                optimizer = torch.optim.AdamW(
+                    filter(lambda p: p.requires_grad, model.parameters()),
+                    lr=lr, weight_decay=wd,
+                )
+                scheduler, sched_type = _build_scheduler(optimizer, cfg)
+                print(f"[train] Sequential Phase2 시작 (epoch {epoch}): KernelNet freeze")
+
         # ── 학습 ──────────────────────────────────────────────────────────────
         model.train()
         train_loss_sum = 0.0
@@ -199,13 +226,28 @@ def train(cfg: dict, exp_dir: Path) -> None:
 
     print(f"[train] 최적 epoch={best_epoch}  val_err={best_val_err:.2f}°")
 
+    # save_yaml(
+    #     {
+    #         "experiment": {
+    #             "det_filter":  cfg.get("category", {}).get("det",  {}).get("selected", "none"),
+    #             "pose_filter": cfg.get("category", {}).get("pose", {}).get("selected", "none"),
+    #             "crop_filter": cfg.get("category", {}).get("crop", {}).get("selected", "none"),
+    #             "backbone":    cfg.get("model", {}).get("backbone", "resnet18"),
+    #         },
+    #         "best": {
+    #             "epoch":           best_epoch,
+    #             "val_angular_err": float(best_val_err),
+    #         },
+    #     },
+    #     exp_dir / "result.yaml",
+    # )
     save_yaml(
         {
             "experiment": {
-                "det_filter":  cfg.get("category", {}).get("det",  {}).get("selected", "none"),
-                "pose_filter": cfg.get("category", {}).get("pose", {}).get("selected", "none"),
-                "crop_filter": cfg.get("category", {}).get("crop", {}).get("selected", "none"),
-                "backbone":    cfg.get("model", {}).get("backbone", "resnet18"),
+                "model_type":       cfg.get("model", {}).get("type", "proposed"),
+                "train_mode":       cfg.get("train", {}).get("mode", "e2e"),
+                "kernel_hidden":    cfg.get("model", {}).get("kernel_hidden", 0),
+                "regressor_hidden": cfg.get("model", {}).get("regressor_hidden", 256),
             },
             "best": {
                 "epoch":           best_epoch,
