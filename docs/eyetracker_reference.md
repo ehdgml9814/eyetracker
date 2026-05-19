@@ -85,6 +85,13 @@ graph TD
     TRAIN --> MET["utils/metrics.py\nangular_error_*"]:::util
     EVAL  --> MET
 
+    INFER["infer.py\n실시간 웹캠 추론"]:::pipe
+    INFER --> PM
+    INFER --> BM
+    INFER --> DET["models/detector.py\nEyeLandmarker · solve_head_pose"]:::model
+    INFER --> CAL["utils/calibrate.py\nload_calib · 캘리브레이션"]:::util
+    INFER --> MET
+
     classDef ctrl  fill:#0d2149,stroke:#1f6feb,color:#79c0ff
     classDef pipe  fill:#3d2000,stroke:#f0883e,color:#f0883e
     classDef model fill:#1e0d3b,stroke:#bc8cff,color:#d2a8ff
@@ -103,8 +110,11 @@ graph TD
 | `kernel_net.py` | Conv 인코더로 동적 필터 커널 생성 + 적용 | `encoder` (Conv×3+GAP), `fc` (FC×2) |
 | `backbone.py` | 공유 가중치 Siamese CNN (ResNet18 고정) | `encoder` (ResNet18 분류 헤드 제거) |
 | `dataset.py` | HDF5 전체 RAM 로드, 증강, 정규화 | `_left_eye`, `_right_eye`, `_gaze`, `_head_pose` |
+| `detector.py` | MediaPipe FaceLandmarker 기반 눈 검출 + PnP 헤드포즈 추정 | `EyeLandmarker`, `solve_head_pose` |
 | `config.py` | static.yaml + dynamic.yaml 병합, CLI override 적용 | — |
 | `metrics.py` | Angular Error (°), gaze_vec → pitch/yaw 변환 | — |
+| `calibrate.py` | 체커보드 캘리브레이션 실행 · 결과 YAML 저장/로드 | `load_calib()` |
+| `infer.py` | 실시간 웹캠 추론 — 캘리브레이션 자동 로드 | — |
 
 ---
 
@@ -647,7 +657,70 @@ gvec   = model(l_t, r_t, hp_t)            # (1,3) 단위벡터
 pitchyaw = gaze_vec_to_pitchyaw(gvec)     # 화살표 표시용
 ```
 
+**캘리브레이션 자동 로드** (시작 시 1회):
+```python
+# 우선순위: --calib 인수 > data/camera_calib.yaml > focal=width 근사값
+for candidate in [args.calib, "data/camera_calib.yaml"]:
+    result = load_calib(candidate)
+    if result is not None:
+        cam_matrix, dist_coeff = result
+        break
+
+# solve_head_pose에 실측값 전달 (없으면 None → 근사값 fallback)
+head_pose = solve_head_pose(pts_2d, frame.shape[:2], cam_matrix, dist_coeff)
+```
+
+```bash
+python src/infer.py --exp-dir runs/exp_proposed_e2e_512              # 자동 탐색
+python src/infer.py --exp-dir runs/exp_proposed_e2e_512 --calib data/my_calib.yaml
+```
+
 **주의**: `apply_det`, `apply_pose`, `apply_crop` 완전 제거 — MediaPipe는 원본 프레임에 직접 실행.
+
+</details>
+
+<details>
+<summary><code>src/utils/calibrate.py</code> — 카메라 캘리브레이션</summary>
+
+**파일**: `src/utils/calibrate.py`
+
+| 함수 | 설명 |
+|------|------|
+| `load_calib(path)` | YAML 로드 → `(camera_matrix (3,3), dist_coeffs (k,1))` 반환. 파일 없으면 `None` |
+| `calibrate_from_images(images, cols, rows, square_mm)` | `cv2.calibrateCamera()` 실행, dict 반환 |
+| `save_calib(result, path, ...)` | 결과를 YAML로 저장 |
+| `run_interactive(...)` | 웹캠 실시간 캡처 → 캘리브레이션 |
+| `run_from_dir(image_dir, ...)` | 기존 이미지 디렉토리로 캘리브레이션 |
+
+**사용법**:
+```bash
+# 웹캠으로 체커보드 20장 캡처 후 자동 캘리브레이션
+python src/utils/calibrate.py --cols 9 --rows 6 --square 25.0
+
+# 기존 이미지 폴더 사용
+python src/utils/calibrate.py --images data/calib_imgs/
+
+# 결과 저장 위치 변경
+python src/utils/calibrate.py --out data/camera_calib.yaml
+```
+
+**SPACE 키** — 체커보드 코너 검출 성공 시에만 캡처 / **q, ESC** — 강제 종료 후 즉시 캘리브레이션
+
+**출력 YAML 구조** (`data/camera_calib.yaml`):
+```yaml
+camera_matrix:
+  fx: 832.4   # x축 초점거리 (px)
+  fy: 831.9   # y축 초점거리 (px)
+  cx: 320.1   # 주점 x (px)
+  cy: 240.6   # 주점 y (px)
+dist_coeffs: [-0.23, 0.11, 0.001, -0.001, -0.05]  # k1,k2,p1,p2,k3
+rms_error: 0.42      # 재투영 오차 (px) — 0.5 이하면 우수
+image_size: [640, 480]
+board_cols: 9
+board_rows: 6
+square_size_mm: 25.0
+n_images: 20
+```
 
 </details>
 
@@ -676,6 +749,46 @@ pitchyaw = gaze_vec_to_pitchyaw(gvec)     # 화살표 표시용
 | **kernel_params** | eval.py가 측정하는 KernelNet 파라미터 수 (baseline=0) |
 | **sweep** | 실험 YAML의 fixed + grid Cartesian product 전체 실험 목록 |
 | **phase1_ratio** | sequential 전용 — Phase1에 할당할 epoch 비율 (0.4 = 50×0.4 = 20 epoch) |
+| **Camera Calibration** | 카메라 내부 파라미터(fx, fy, cx, cy)와 렌즈 왜곡계수를 측정하는 작업 — 추론 정확도 향상 |
+| **camera_matrix** | (3×3) 내부 파라미터 행렬 — fx(x 초점거리), fy(y 초점거리), cx/cy(주점) |
+| **dist_coeffs** | 렌즈 왜곡 계수 (k1,k2,p1,p2,k3) — 방사/접선 왜곡 보정용 |
+| **RMS 재투영 오차** | 캘리브레이션 품질 지표 (px) — 0.5 이하면 우수, 1.0 초과 시 재촬영 권장 |
+| **PnP (Perspective-n-Point)** | 3D 모델 포인트 ↔ 2D 이미지 대응점으로 카메라 자세 추정 — `cv2.solvePnP()` |
+
+<details>
+<summary><strong>캘리브레이션 적용 범위 — 학습 vs 추론</strong></summary>
+
+| 단계 | 캘리브레이션 사용 여부 | 이유 |
+|------|----------------------|------|
+| **학습 (`train.py`)** | ❌ 미사용 | MPIIGaze HDF5의 `head_pose`는 데이터셋 제작 시 이미 계산된 값 |
+| **전처리 (`preprocess.py`)** | ❌ 미사용 | `.mat`에서 MPIIGaze 팀의 캘리브레이션 결과를 그대로 읽음 |
+| **추론 (`infer.py`)** | ✅ 사용 권장 | 사용자 웹캠의 실제 파라미터 측정 필요 |
+
+**학습 데이터의 head_pose 출처**:
+```
+MPIIGaze .mat 파일
+  └── data["left"]["pose"]   # (N,3) — MPIIGaze 팀이 자체 캘리브레이션으로 계산
+  └── data["right"]["pose"]
+       ↓ preprocess.py
+  HDF5 head_pose (N,3)       # 그대로 저장 — 우리가 다시 계산하지 않음
+```
+
+**추론 파이프라인에서의 역할**:
+```
+웹캠 프레임
+  → MediaPipe FaceLandmarker → 2D 랜드마크 6점 (pts_2d)
+  → solve_head_pose(pts_2d, frame.shape, camera_matrix, dist_coeffs)
+       ├── camera_matrix: data/camera_calib.yaml 로드 (없으면 focal=width 근사)
+       └── dist_coeffs:   동상
+  → head_pose (3,) [pitch, yaw, roll]  → 모델 입력
+```
+
+**focal=width 근사값의 한계**:
+- 일반 웹캠 실제 초점거리: 580~900 px (640×480 기준)
+- focal=width(=640) 가정은 ±10~20% 오차 가능
+- 헤드포즈 오차 → gaze 예측 오차로 전파 → 캘리브레이션으로 보정 권장
+
+</details>
 
 <details>
 <summary><strong>Cosine Loss vs Angular Error</strong> — 왜 다른가</summary>
