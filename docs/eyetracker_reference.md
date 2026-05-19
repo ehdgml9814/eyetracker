@@ -704,25 +704,21 @@ err = np.mean(np.degrees(np.arccos(dot)))
 
 ### 전체 파라미터 분해
 
-```
-Θ_P(h_k) = Θ_backbone  +  Θ_KN(h_k)  +  Θ_Reg(256)
-Θ_B(h_r) = Θ_backbone  +  Θ_Reg(h_r)
+$$\Theta_P(h_k) = \Theta_{\text{backbone}} + \Theta_{KN}(h_k) + \Theta_{\text{Reg}}(256)$$
 
-Θ_backbone = 11.2M  (ResNet18 SiameseBackbone, 양쪽 동일 · 고정)
-```
+$$\Theta_B(h_r) = \Theta_{\text{backbone}} + \Theta_{\text{Reg}}(h_r)$$
+
+$$\Theta_{\text{backbone}} = 11.2\text{M} \quad (\text{ResNet18 SiameseBackbone, 양쪽 동일 · 고정})$$
 
 ### 구성요소별 파라미터 공식 (k=5)
 
-```
-Θ_KN(h_k) = 93,771 + 204·h_k
-  ├─ encoder Conv×3 + BN×3 (고정): 93,696
-  ├─ FC1  Linear(128 → h_k):       129·h_k   params
-  └─ FC2  Linear(h_k → 75):         75·h_k + 75  params
+$$\Theta_{KN}(h_k) = \underbrace{93{,}696}_{\text{encoder 고정}} + \underbrace{129 \cdot h_k}_{\text{FC1}} + \underbrace{75 \cdot h_k + 75}_{\text{FC2}} = 93{,}771 + 204 \cdot h_k$$
 
-Θ_Reg(h)  = 1,031·h + 3
-  ├─ Linear(1027 → h):  1,028·h   params
-  └─ Linear(h → 3):        3·h + 3  params
-```
+- encoder: Conv×3 + BN×3 고정 (93,696)
+- FC1 — Linear$(128 \to h_k)$: $129 \cdot h_k$ params
+- FC2 — Linear$(h_k \to 75)$: $75 \cdot h_k + 75$ params
+
+$$\Theta_{\text{Reg}}(h) = \underbrace{1{,}028 \cdot h}_{\text{Linear}(1027 \to h)} + \underbrace{3h + 3}_{\text{Linear}(h \to 3)} = 1{,}031 \cdot h + 3$$
 
 ### 설정 → 코드 경로
 
@@ -768,12 +764,11 @@ kernel_params = (
 
 ### 추가 파라미터 (backbone 제외) 및 근사 동등
 
-```
-ΔΘ_P(h_k) = Θ_KN(h_k) + Θ_Reg(256)  =  357,710 + 204·h_k
-ΔΘ_B(h_r) = Θ_Reg(h_r)               =    1,031·h_r + 3
+$$\Delta\Theta_P(h_k) = \Theta_{KN}(h_k) + \Theta_{\text{Reg}}(256) = 357{,}710 + 204 \cdot h_k$$
 
-설계 의도: ΔΘ_P ≈ ΔΘ_B  (같은 규모의 추가 파라미터를 서로 다른 곳에 투자)
-```
+$$\Delta\Theta_B(h_r) = \Theta_{\text{Reg}}(h_r) = 1{,}031 \cdot h_r + 3$$
+
+$$\Delta\Theta_P \approx \Delta\Theta_B \quad (\text{같은 규모의 추가 파라미터를 서로 다른 곳에 투자})$$
 
 ### S/M/L 크기별 실제 파라미터 수
 
